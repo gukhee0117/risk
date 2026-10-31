@@ -122,6 +122,22 @@ class TradingCalendar:
             raise RiskError("CALENDAR_OUT_OF_RANGE", "직전 거래일이 필요합니다.", 503)
         return [predecessors[-1], *window]
 
+    def latest_batch_target(self, now):
+        """Latest eligible session, including recovery on mornings/holidays.
+
+        Missing hours block recovery instead of guessing an older target.
+        """
+        today = self._today(now)
+        for day in reversed(self.sessions):
+            if day > today:
+                continue
+            close = self.closes[day]
+            if close is None:
+                raise RiskError("TRADING_HOURS_UNAVAILABLE", "공식 종료 시각이 필요합니다.", 503)
+            if close + timedelta(minutes=10) <= now:
+                return day
+        return None
+
     def state(self, price_to, current):
         if price_to not in self.sessions or price_to > current:
             return "EXPIRED"

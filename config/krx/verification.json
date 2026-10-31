@@ -1,0 +1,55 @@
+{
+  "source": "https://open.krx.co.kr/contents/MKD/01/0110/01100305/MKD01100305.jsp",
+  "sources": [
+    {
+      "file": "2023.xls",
+      "holiday_rows": 15,
+      "sha256": "90e918b355aad380a672691ad303f766fc478e6eaf87a36bedb1406e8b14575c"
+    },
+    {
+      "file": "2024.xls",
+      "holiday_rows": 18,
+      "sha256": "c9a23c179d76496c7b7e89668bc376762a9fdaaf2b683e7444f668cfcb0abf9e"
+    },
+    {
+      "file": "2025.xls",
+      "holiday_rows": 19,
+      "sha256": "fbff67f73e650dd265350e8229496364c19a973b6096f137787719655d447e12"
+    },
+    {
+      "file": "2026.xls",
+      "holiday_rows": 17,
+      "sha256": "d94d1aab4d704a349c8476def842e9353f6a71e0a02b5e77bc483a32e272262d"
+    }
+  ],
+  "start": "2023-01-01",
+  "end": "2026-12-31",
+  "hours_through": "2026-12-31",
+  "hours_policy": "official_regular_hours_with_unconfirmed_exceptions",
+  "unconfirmed_special_sessions": [
+    {
+      "date": "2026-11-19",
+      "reason": "exam_day_exchange_hours_unconfirmed",
+      "source_ref": "https://www.moe.go.kr/boardCnts/viewRenew.do?boardID=294&boardSeq=100526&lev=0&m=020402"
+    }
+  ],
+  "serialization": {
+    "encoding": "utf-8",
+    "line_ending": "LF"
+  },
+  "calendar_days": 1461,
+  "open_days": 975,
+  "hours_rows": 974,
+  "unknown_hours_open_days": 1,
+  "sha256": {
+    "open-days.csv": "c35710358b90ffcb929687f8242ce95ead14571b71fe078a55dc6bb0d5eff9b2",
+    "trading-hours.csv": "32e520ce896888b7373b4eadc89ea814dcac93f328aab3f88bb9014fc9512402"
+  },
+  "limits": [
+    "User-provided KRX downloads; no authenticated origin signature.",
+    "Special hours reference KRX notices republished by securities firms.",
+    "Official regular hours apply to verified open dates; special notices override them.",
+    "Unconfirmed special-session hours remain absent, never inferred from the exam date.",
+    "available_at intentionally empty: no KIS finality guarantee."
+  ]
+}
