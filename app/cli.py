@@ -1,4 +1,4 @@
-"""External scheduler entry point; resume and explicit reanalysis are distinct."""
+"""Manual batch / maintenance entry point; explicit reanalysis stays available."""
 
 import argparse
 import json
@@ -10,6 +10,7 @@ from app.config import Settings
 from app.domain import RiskError, now_kst
 from app.repositories.sqlite import Repository
 from app.services.batch import batch_lock, run_batch
+from app.services.backup import daily_backup
 from app.services.calendar import TradingCalendar
 from app.universe import load_universe
 
@@ -59,6 +60,7 @@ def main():
         universe = load_universe(settings.universe)
         client = KisClient(settings.kis_key, settings.kis_secret, settings.kis_environment)
         result = run_batch(repository, calendar, universe, client, now, target_date=target, reanalyze=args.reanalyze)
+        daily_backup(repository, target, settings.backup_dir, settings.backup_keep)
         print(json.dumps(result, ensure_ascii=False))
         return 1 if result["failed"] else 0
     except RiskError as exc:

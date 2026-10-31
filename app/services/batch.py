@@ -42,7 +42,8 @@ def batch_lock(path: Path):
         handle.close()
 
 
-def run_batch(repository, calendar, universe, client, now, *, target_date=None, reanalyze=False, clock=now_kst):
+def run_batch(repository, calendar, universe, client, now, *, target_date=None, reanalyze=False, clock=now_kst,
+              stop_requested=lambda: False):
     end = calendar.batch_target(now, target_date)
     result = {"priceTo": end.isoformat() if end else None, "updated": [], "unchanged": [], "failed": [], "skipped": []}
     if end is None:
@@ -56,6 +57,10 @@ def run_batch(repository, calendar, universe, client, now, *, target_date=None, 
         run_id = repository.start_run(end, calendar.version, "reanalyze" if reanalyze else "resume", pending, now)
         result["runId"] = run_id
         for ticker, instrument in universe.items():
+            if stop_requested():
+                repository.finish_run(run_id, "INTERRUPTED", clock())
+                result["status"] = "INTERRUPTED"
+                return result
             if instrument.status != "active":
                 result["skipped"].append({"ticker": ticker, "code": instrument.status})
                 continue

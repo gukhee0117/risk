@@ -20,7 +20,9 @@ def isolated_environment(monkeypatch, tmp_path):
     path.write_text("", encoding="utf-8")
     monkeypatch.setenv("RISK_ENV_FILE", str(path))
     for name in ("KIS_ENV_FILE", "KIS_APP_KEY", "KIS_APP_SECRET", "KIS_ENV",
-                 "RISK_CALENDAR_PATH", "RISK_TRADING_HOURS_PATH", "RISK_DB_PATH", "RISK_UNIVERSE_PATH"):
+                 "RISK_CALENDAR_PATH", "RISK_TRADING_HOURS_PATH", "RISK_DB_PATH", "RISK_UNIVERSE_PATH",
+                 "RISK_SERVICE_KEY", "RISK_SCHEDULER_ENABLED", "RISK_SCHEDULER_POLL_SECONDS",
+                 "RISK_BATCH_MAX_ATTEMPTS", "RISK_BACKUP_DIR", "RISK_BACKUP_KEEP"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -46,7 +48,7 @@ def market(tmp_path):
     repository = Repository(tmp_path / "risk.sqlite3")
     repository.initialize()
     universe = {ticker: Instrument(ticker, ticker, "active") for ticker in ("005930", "000660")}
-    settings = Settings(repository.path, path, universe_path)
+    settings = Settings(repository.path, path, universe_path, service_key='synthetic-test-service-key')
     return calendar, now, sessions, repository, universe, settings
 
 

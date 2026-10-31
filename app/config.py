@@ -8,7 +8,9 @@ from app.domain import RiskError
 
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWED = {"RISK_DB_PATH", "RISK_CALENDAR_PATH", "RISK_UNIVERSE_PATH",
-           "RISK_TRADING_HOURS_PATH", "KIS_ENV_FILE", "KIS_ENV", "KIS_APP_KEY", "KIS_APP_SECRET"}
+           "RISK_TRADING_HOURS_PATH", "KIS_ENV_FILE", "KIS_ENV", "KIS_APP_KEY", "KIS_APP_SECRET",
+           "RISK_SERVICE_KEY", "RISK_SCHEDULER_ENABLED", "RISK_SCHEDULER_POLL_SECONDS", "RISK_BATCH_MAX_ATTEMPTS"}
+ALLOWED |= {"RISK_BACKUP_DIR", "RISK_BACKUP_KEEP"}
 
 
 def read_env(path: Path, *, required=False, allowed=ALLOWED) -> dict[str, str]:
@@ -71,6 +73,12 @@ class Settings:
     kis_secret: str | None = field(default=None, repr=False)
     kis_environment: str = "demo"
     trading_hours: Path | None = None
+    service_key: str | None = field(default=None, repr=False)
+    scheduler_enabled: bool = False
+    scheduler_poll_seconds: int = 60
+    batch_max_attempts: int = 3
+    backup_dir: Path | None = None
+    backup_keep: int = 7
 
     @classmethod
     def from_env(cls):
@@ -83,6 +91,19 @@ class Settings:
             path = Path(raw)
             return path if path.is_absolute() else ROOT / path
 
+        def positive_int(key, default):
+            try:
+                value = int(values.get(key, str(default)))
+                if value <= 0:
+                    raise ValueError
+                return value
+            except ValueError as exc:
+                raise RiskError("INVALID_CONFIGURATION", "실행 간격과 시도 횟수는 양의 정수여야 합니다.", 503) from exc
+
+        enabled = values.get("RISK_SCHEDULER_ENABLED", "false").lower()
+        if enabled not in {"true", "false", "1", "0"}:
+            raise RiskError("INVALID_CONFIGURATION", "스케줄러 활성화 설정을 확인하세요.", 503)
+
         return cls(
             database=path_for("RISK_DB_PATH", ROOT / "data/risk.sqlite3"),
             calendar=path_for("RISK_CALENDAR_PATH"),
@@ -91,4 +112,10 @@ class Settings:
             kis_secret=values.get("KIS_APP_SECRET"),
             kis_environment=values.get("KIS_ENV", "demo"),
             trading_hours=path_for("RISK_TRADING_HOURS_PATH"),
+            service_key=values.get("RISK_SERVICE_KEY"),
+            scheduler_enabled=enabled in {"true", "1"},
+            scheduler_poll_seconds=positive_int("RISK_SCHEDULER_POLL_SECONDS", 60),
+            batch_max_attempts=positive_int("RISK_BATCH_MAX_ATTEMPTS", 3),
+            backup_dir=path_for("RISK_BACKUP_DIR"),
+            backup_keep=positive_int("RISK_BACKUP_KEEP", 7),
         )

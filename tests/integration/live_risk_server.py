@@ -23,7 +23,9 @@ def setup(directory):
     os.environ["RISK_ENV_FILE"] = str(directory / "empty.env")
     # Do not allow inherited production/shared settings into module-level app creation.
     for key in ("KIS_ENV_FILE", "KIS_APP_KEY", "KIS_APP_SECRET", "RISK_CALENDAR_PATH",
-                "RISK_TRADING_HOURS_PATH", "RISK_DB_PATH", "RISK_UNIVERSE_PATH"):
+                "RISK_TRADING_HOURS_PATH", "RISK_DB_PATH", "RISK_UNIVERSE_PATH",
+                "RISK_SERVICE_KEY", "RISK_SCHEDULER_ENABLED", "RISK_SCHEDULER_POLL_SECONDS",
+                "RISK_BATCH_MAX_ATTEMPTS", "RISK_BACKUP_DIR", "RISK_BACKUP_KEEP"):
         os.environ.pop(key, None)
 
 
@@ -99,7 +101,7 @@ def main():
     import uvicorn
 
     settings = Settings(database=directory / "risk.sqlite3", calendar=directory / "calendar.csv",
-                        universe=directory / "universe.csv")
+                        universe=directory / "universe.csv", service_key='synthetic-http-integration-key')
     api = create_app(settings, clock=lambda: datetime.fromisoformat(
         (directory / "clock.txt").read_text(encoding="utf-8")))
     uvicorn.run(api, host="127.0.0.1", port=args.port, log_level="warning", access_log=False)

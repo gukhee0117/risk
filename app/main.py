@@ -1,6 +1,9 @@
 """Application factory; importing the module never calls KIS or opens a DB."""
 
-from fastapi import Depends, FastAPI
+import hmac
+from contextlib import asynccontextmanager
+
+from fastapi import Depends, FastAPI, Header
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
@@ -10,12 +13,30 @@ from app.repositories.sqlite import Repository
 from app.schemas.risk import GradeResponse, PackageRequest, PackageResponse
 from app.services.calendar import TradingCalendar
 from app.services.risk import RiskService
+from app.services.runtime import BatchRuntime, start_scheduler
 from app.universe import load_universe
 
 
-def create_app(settings: Settings | None = None, clock=now_kst):
+def create_app(settings: Settings | None = None, clock=now_kst, *, runtime=None, scheduler_factory=start_scheduler):
     settings = settings or Settings.from_env()
-    api = FastAPI(title="Risk Service", version="0.2.0")
+    runtime = runtime or BatchRuntime(settings, clock=clock)
+
+    @asynccontextmanager
+    async def lifespan(_):
+        scheduler = None
+        if settings.scheduler_enabled:
+            scheduler = scheduler_factory(runtime)
+        try:
+            yield
+        finally:
+            runtime.stop()
+            if scheduler is not None:
+                # Let the current stock finish atomically, then leave others pending.
+                import asyncio
+                await asyncio.to_thread(scheduler.shutdown, wait=True)
+
+    api = FastAPI(title="Risk Service", version="0.3.0", lifespan=lifespan)
+    api.state.batch_runtime = runtime
 
     @api.exception_handler(RiskError)
     async def controlled_error(_, exc: RiskError):
@@ -38,11 +59,41 @@ def create_app(settings: Settings | None = None, clock=now_kst):
         calendar = TradingCalendar.from_csv(settings.calendar, settings.trading_hours)
         return RiskService(Repository(settings.database), calendar, load_universe(settings.universe), clock(), settings.weight_tolerance)
 
-    @api.get("/grades", response_model=list[GradeResponse])
+    def authorize(key: str | None = Header(default=None, alias="X-Risk-Service-Key")):
+        if not settings.service_key:
+            raise RiskError("AUTH_CONFIGURATION", "서비스 인증 설정이 필요합니다.", 503)
+        if key is None or not hmac.compare_digest(key.encode('utf-8'), settings.service_key.encode('utf-8')):
+            raise RiskError("UNAUTHORIZED", "서비스 인증이 필요합니다.", 401)
+
+    @api.get('/health')
+    def health():
+        status = {"status": "DEGRADED", "lastSuccessfulCalculationAt": None, "lastBatchStatus": None,
+                  "batch_running": None}
+        try:
+            status['batch_running'] = runtime.batch_running()
+            if settings.database.is_file():
+                status.update(Repository(settings.database).health())
+            if status['lastBatchStatus'] == 'RUNNING' and status['batch_running'] is False:
+                # Persisted checkpoint after a killed process, not a live batch.
+                status['lastBatchStatus'] = 'INTERRUPTED'
+            calendar = TradingCalendar.from_csv(settings.calendar, settings.trading_hours) if settings.calendar else None
+            current = calendar.latest(clock()) if calendar else None
+            with Repository(settings.database).snapshot() as db:
+                grades = Repository.grades(db)
+            usable = any(calendar.fresh(g.price_to, current) for g in grades.values()) if current else False
+            if (usable and settings.service_key and not runtime.last_error
+                    and status['lastBatchStatus'] not in {'FAILED', 'PARTIAL', 'INTERRUPTED'}):
+                status['status'] = 'OK'
+        except RiskError:
+            pass
+        # Liveness remains 200 even when calculations fail; do not cause restart loops.
+        return status
+
+    @api.get("/grades", response_model=list[GradeResponse], dependencies=[Depends(authorize)])
     def grades(risk: RiskService = Depends(service)):
         return risk.grades()
 
-    @api.post("/package/volatility", response_model=PackageResponse)
+    @api.post("/package/volatility", response_model=PackageResponse, dependencies=[Depends(authorize)])
     def volatility(request: PackageRequest, risk: RiskService = Depends(service)):
         return risk.volatility(request)
 

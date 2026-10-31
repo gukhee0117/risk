@@ -56,3 +56,29 @@ def test_malformed_quote_does_not_echo_secret(tmp_path):
     with pytest.raises(RiskError) as error:
         read_env(path)
     assert "never-echo" not in str(error.value)
+
+
+def test_runtime_environment_and_hidden_service_key(monkeypatch):
+    monkeypatch.setenv('RISK_SERVICE_KEY','synthetic-private-service-key')
+    monkeypatch.setenv('RISK_SCHEDULER_ENABLED','true')
+    monkeypatch.setenv('RISK_SCHEDULER_POLL_SECONDS','45')
+    monkeypatch.setenv('RISK_BATCH_MAX_ATTEMPTS','2')
+    monkeypatch.setenv('RISK_BACKUP_DIR','data/test-backup')
+    monkeypatch.setenv('RISK_BACKUP_KEEP','7')
+    settings=Settings.from_env()
+    assert settings.scheduler_enabled and settings.scheduler_poll_seconds == 45
+    assert settings.batch_max_attempts == 2 and settings.backup_keep == 7
+    assert settings.backup_dir == ROOT/'data/test-backup'
+    assert 'synthetic-private-service-key' not in repr(settings)
+
+
+@pytest.mark.parametrize('key,value',[
+    ('RISK_SCHEDULER_ENABLED','maybe'),('RISK_SCHEDULER_POLL_SECONDS','0'),
+    ('RISK_BATCH_MAX_ATTEMPTS','-1'),('RISK_BACKUP_KEEP','not-a-number'),
+])
+def test_invalid_runtime_configuration_fails_without_echo(monkeypatch,key,value):
+    monkeypatch.setenv(key,value)
+    with pytest.raises(RiskError) as exc:
+        Settings.from_env()
+    assert exc.value.code == 'INVALID_CONFIGURATION'
+    assert value not in exc.value.message

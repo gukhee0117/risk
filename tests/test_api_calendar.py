@@ -15,6 +15,7 @@ from conftest import make_prices
 
 
 def request(api, method, path, **kwargs):
+    kwargs['headers'] = {'X-Risk-Service-Key': 'synthetic-test-service-key', **kwargs.get('headers', {})}
     async def run():
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api), base_url="http://test") as client:
             return await client.request(method, path, **kwargs)

@@ -3,6 +3,8 @@
 import sqlite3
 import hashlib
 import json
+import os
+import threading
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import date, datetime
@@ -24,6 +26,16 @@ CREATE TABLE IF NOT EXISTS risk_grade (
 );
 """
 
+_LOCKS = {}
+_LOCKS_GUARD = threading.Lock()
+
+
+def writer_lock(path):
+    # One live writer connection per file/process; reads use separate connections.
+    key = str(path.resolve()).casefold() if os.name == 'nt' else str(path.resolve())
+    with _LOCKS_GUARD:
+        return _LOCKS.setdefault(key, threading.Lock())
+
 
 class Repository:
     def __init__(self, path: Path):
@@ -32,13 +44,19 @@ class Repository:
     def initialize(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
             version, existing = migrations.inspect(db)
+            if version != migrations.VERSION and existing:
+                raise RiskError("MIGRATION_REQUIRED", "기존 DB를 백업하는 migrate 명령을 먼저 실행하세요.", 503)
+            self._enable_wal(db)
             if version == migrations.VERSION:
                 return
-            if existing:
-                raise RiskError("MIGRATION_REQUIRED", "기존 DB를 백업하는 migrate 명령을 먼저 실행하세요.", 503)
+            db.execute("BEGIN IMMEDIATE")
             migrations.upgrade(db, SCHEMA)
+
+    @staticmethod
+    def _enable_wal(db):
+        if db.execute("PRAGMA journal_mode=WAL").fetchone()[0].lower() != "wal":
+            raise RiskError("WAL_UNAVAILABLE", "SQLite WAL을 사용할 수 없습니다.", 503)
 
     def migrate(self):
         """Invoke with batch lock held and service writers stopped; backup first."""
@@ -53,6 +71,7 @@ class Repository:
         if backup is not None:
             self.backup(backup)
         with self.connect() as db:
+            self._enable_wal(db)
             db.execute("BEGIN IMMEDIATE")
             migrations.inspect(db)
             migrations.upgrade(db, SCHEMA)
@@ -64,9 +83,18 @@ class Repository:
         return backup
 
     @contextmanager
-    def connect(self):
+    def connect(self, *, write=True):
+        from contextlib import nullcontext
+        guard = writer_lock(self.path) if write else nullcontext()
+        with guard:
+            with self._connection(write) as db:
+                yield db
+
+    @contextmanager
+    def _connection(self, write):
         try:
-            db = sqlite3.connect(self.path, timeout=10)
+            db = (sqlite3.connect(self.path, timeout=10) if write else
+                  sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", timeout=10, uri=True))
             db.execute("PRAGMA foreign_keys=ON")
             db.row_factory = sqlite3.Row
             try:
@@ -79,7 +107,7 @@ class Repository:
 
     @contextmanager
     def snapshot(self):
-        with self.connect() as db:
+        with self.connect(write=False) as db:
             db.execute("BEGIN")
             yield db
 
@@ -193,9 +221,64 @@ class Repository:
     def backup(self, destination: Path):
         if self.path.resolve() == destination.resolve() or destination.exists():
             raise RiskError("INVALID_BACKUP_PATH", "새 백업 파일 경로를 지정하세요.", 400)
-        with self.connect() as source:
-            target = sqlite3.connect(destination)
-            try:
-                source.backup(target)
-            finally:
-                target.close()
+        # Exclusive creation prevents racing backups from overwriting a file.
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with destination.open("xb"):
+                pass
+        except FileExistsError as exc:
+            raise RiskError("INVALID_BACKUP_PATH", "새 백업 파일 경로를 지정하세요.", 400) from exc
+        try:
+            with self.connect(write=False) as source:
+                target = sqlite3.connect(destination)
+                try:
+                    source.backup(target)
+                finally:
+                    target.close()
+        except BaseException:
+            # This path was exclusively created above, not a pre-existing backup.
+            destination.unlink(missing_ok=True)
+            raise
+
+    def automatic_candidates(self, target, tickers, maximum_attempts):
+        retryable = {"KIS_UNAVAILABLE", "LATEST_PRICE_MISSING"}
+        fatal = {"KIS_CONFIGURATION", "KIS_AUTH_FAILED", "KIS_RESPONSE_ERROR", "KIS_QUERY_FAILED", "CODE_ERROR"}
+        completed = self.completed(target)
+        with self.snapshot() as db:
+            rows = db.execute("""SELECT i.* FROM batch_item i JOIN batch_run r USING(run_id)
+                WHERE r.target_date=? ORDER BY i.item_id""", (target.isoformat(),)).fetchall()
+        latest, attempts = {}, {}
+        for row in rows:
+            latest[row['ticker']] = row
+            if row['started_at'] is not None:
+                attempts[row['ticker']] = attempts.get(row['ticker'], 0) + 1
+        if any(t in tickers and r['status'] == 'FAILED' and r['error_code'] in fatal for t, r in latest.items()):
+            return []
+        eligible = []
+        for ticker in tickers:
+            row = latest.get(ticker)
+            if ticker in completed or attempts.get(ticker, 0) >= maximum_attempts:
+                continue
+            if row is not None and row['status'] == 'FAILED' and row['error_code'] not in retryable:
+                continue
+            eligible.append(ticker)
+        return eligible
+
+    def health(self):
+        with self.snapshot() as db:
+            migrations.inspect(db)
+            run = db.execute("SELECT * FROM batch_run ORDER BY started_at DESC,rowid DESC LIMIT 1").fetchone()
+            last_success = db.execute("""SELECT MAX(finished_at) FROM batch_item
+                WHERE status IN ('SUCCEEDED','UNCHANGED')""").fetchone()[0]
+            if last_success is None:
+                last_success = db.execute("SELECT MAX(calculated_at) FROM risk_grade").fetchone()[0]
+            status = run['status'] if run else None
+            if run and status != 'RUNNING':
+                states = db.execute("""SELECT i.status FROM batch_item i JOIN batch_run r USING(run_id)
+                    WHERE r.target_date=? AND i.item_id=(SELECT MAX(j.item_id) FROM batch_item j
+                    JOIN batch_run s ON s.run_id=j.run_id WHERE s.target_date=r.target_date AND j.ticker=i.ticker)""",
+                    (run['target_date'],)).fetchall()
+                successes = sum(r[0] in {'SUCCEEDED','UNCHANGED'} for r in states)
+                if successes and any(r[0] not in {'SUCCEEDED','UNCHANGED'} for r in states):
+                    status = 'PARTIAL'
+            return {"lastSuccessfulCalculationAt": last_success, "lastBatchStatus": status}
