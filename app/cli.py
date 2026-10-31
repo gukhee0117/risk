@@ -23,6 +23,8 @@ def main():
     batch.add_argument("--reanalyze", action="store_true", help="성공 종목도 재수집; 변경 결과만 새 버전 게시")
     commands.add_parser("migrate", help="기존 SQLite 백업 후 스키마 마이그레이션")
     commands.add_parser("calendar-status", help="공식 달력 기준일·버전·범위 확인 (시세 호출 없음)")
+    preflight = commands.add_parser("preflight", help="환경·달력·SQLite·백업 점검 (KIS 호출·운영 DB 변경 없음)")
+    preflight.add_argument("--probe-storage", action="store_true", help="임시 파일로 WAL·쓰기·삭제 권한 확인")
     backup = commands.add_parser("backup")
     backup.add_argument("destination", type=Path)
     args = parser.parse_args()
@@ -30,6 +32,11 @@ def main():
     try:
         settings = Settings.from_env()
         repository = Repository(settings.database)
+        if args.command == "preflight":
+            from app.services.preflight import preflight as inspect_readiness
+            result = inspect_readiness(settings, now_kst(), probe_storage=args.probe_storage)
+            print(json.dumps(result, ensure_ascii=False))
+            return 1 if result["status"] == "BLOCKED" else 0
         if args.command == "migrate":
             with batch_lock(repository.path.with_suffix(".batch.lock")):
                 backup_path = repository.migrate()

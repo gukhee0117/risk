@@ -1,0 +1,9 @@
+*
+!Dockerfile
+!requirements-lock.txt
+!app/
+!app/**
+!config/
+!config/**
+**/__pycache__/
+**/*.pyc
