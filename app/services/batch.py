@@ -44,7 +44,7 @@ def batch_lock(path: Path):
 
 def run_batch(repository, calendar, universe, client, now, *, target_date=None, reanalyze=False, clock=now_kst,
               stop_requested=lambda: False):
-    end = calendar.batch_target(now, target_date)
+    end = calendar.price_target(now, target_date)
     result = {"priceTo": end.isoformat() if end else None, "updated": [], "unchanged": [], "failed": [], "skipped": []}
     if end is None:
         result["status"] = "NOT_DUE"

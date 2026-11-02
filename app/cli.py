@@ -59,7 +59,7 @@ def main():
         if args.reanalyze and args.as_of is None:
             raise RiskError("INVALID_BATCH_DATE", "재분석은 --as-of 기준 거래일을 명시하세요.", 400)
         # Fail before constructing the KIS client if calendar/window is not ready.
-        target = calendar.batch_target(now, args.as_of)
+        target = calendar.price_target(now, args.as_of)
         if target is None:
             print(json.dumps({"status": "NOT_DUE", "priceTo": None, "updated": [], "unchanged": [], "failed": [], "skipped": []}))
             return 0

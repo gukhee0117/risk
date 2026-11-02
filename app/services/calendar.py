@@ -122,6 +122,32 @@ class TradingCalendar:
             raise RiskError("CALENDAR_OUT_OF_RANGE", "직전 거래일이 필요합니다.", 503)
         return [predecessors[-1], *window]
 
+    def _previous_session(self, day):
+        previous = [d for d in self.sessions if d < day]
+        if not previous:
+            raise RiskError("CALENDAR_OUT_OF_RANGE", "직전 거래일이 필요합니다.", 503)
+        return previous[-1]
+
+    def price_target(self, now, target=None):
+        """Grade input must be historical on a subsequent exchange session.
+
+        Same-day observation eligibility remains in batch_target. Manual historical
+        recovery is allowed on the next exchange date; defaults retain close+10.
+        """
+        today = self._today(now)
+        if target is None:
+            execution_day = self.batch_target(now)
+            return self._previous_session(execution_day) if execution_day else None
+        self.batch_target(now, target)
+        if not any(target < day <= today for day in self.sessions):
+            raise RiskError("BATCH_NOT_DUE", "가격 기준일 다음 거래일부터 수집할 수 있습니다.", 503)
+        return target
+
+    def latest_price_target(self, now):
+        """Recover the last due execution's previous session, even on holidays."""
+        execution_day = self.latest_batch_target(now)
+        return self.price_target(now, self._previous_session(execution_day)) if execution_day else None
+
     def latest_batch_target(self, now):
         """Latest eligible session, including recovery on mornings/holidays.
 

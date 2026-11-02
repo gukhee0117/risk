@@ -14,7 +14,8 @@ from conftest import make_prices
 
 def runtime_for(market, *, failures=None, clock=None):
     cal, now, sessions, repo, universe, settings = market
-    now = cal.closes[sessions[-1]] + timedelta(minutes=10)
+    execution_day = next(d for d in cal.sessions if d > sessions[-1])
+    now = cal.closes[execution_day] + timedelta(minutes=10)
     state = {'now': now, 'calls': [], 'failures': failures or {}, 'constructed': 0, 'closed': 0}
     prices = make_prices(sessions)
 

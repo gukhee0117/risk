@@ -54,7 +54,7 @@ class BatchRuntime:
                 raise RiskError("CALENDAR_UNAVAILABLE", "공식 달력 설정이 필요합니다.", 503)
             calendar = TradingCalendar.from_csv(settings.calendar, settings.trading_hours)
             now = self.clock()
-            target = calendar.latest_batch_target(now)
+            target = calendar.latest_price_target(now)
             if target is None:
                 return {"status": "NOT_DUE"}
             calendar.window(target)
