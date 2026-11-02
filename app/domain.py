@@ -5,6 +5,10 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 KST = timezone(timedelta(hours=9))
+FATAL_BATCH_CODES = frozenset({
+    "KIS_CONFIGURATION", "KIS_AUTH_FAILED", "KIS_RESPONSE_ERROR", "KIS_QUERY_FAILED",
+    "STORAGE_UNAVAILABLE", "INVALID_BATCH_STATE", "CODE_ERROR",
+})
 
 
 def now_kst() -> datetime:
@@ -45,4 +49,5 @@ def three_years_before(day: date) -> date:
     try:
         return day.replace(year=day.year - 3)
     except ValueError:
+        # A leap-day end date maps to the last valid February day three years earlier.
         return day.replace(year=day.year - 3, day=28)

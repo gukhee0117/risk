@@ -72,7 +72,10 @@ def next_session(calendar, target):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=(
+        __doc__ + " Fixed sample: 005930, 247540, 069500, 102110; it does not follow universe.csv. "
+        "MISSING can mean no provider row for the date or no usable baseline."
+    ))
     parser.add_argument("command", choices=("plan", "kis", "public", "compare"))
     parser.add_argument("--as-of", type=date.fromisoformat, default=date(2026, 10, 30))
     parser.add_argument("--kis-file", type=Path)

@@ -3,7 +3,7 @@ from dataclasses import replace
 import os
 from pathlib import Path
 
-from app.domain import RiskError, now_kst
+from app.domain import FATAL_BATCH_CODES, RiskError, now_kst
 from app.services.calculation import calculate_grade
 
 
@@ -80,7 +80,7 @@ def run_batch(repository, calendar, universe, client, now, *, target_date=None, 
             except RiskError as exc:
                 repository.fail_item(item_id, exc.code, clock())
                 result["failed"].append({"ticker": ticker, "code": exc.code})
-                if exc.code in {"KIS_CONFIGURATION", "KIS_AUTH_FAILED", "KIS_RESPONSE_ERROR", "KIS_QUERY_FAILED", "STORAGE_UNAVAILABLE", "INVALID_BATCH_STATE"}:
+                if exc.code in FATAL_BATCH_CODES:
                     repository.finish_run(run_id, "FAILED", clock())
                     break
             except Exception:

@@ -12,7 +12,7 @@ from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
-from app.domain import Grade, Price, RiskError
+from app.domain import FATAL_BATCH_CODES, Grade, Price, RiskError
 from app.repositories import migrations
 
 SCHEMA = """
@@ -130,7 +130,8 @@ class Repository:
             old = self.grades(db).get(grade.ticker)
             if old is not None and grade.price_to < old.price_to:
                 raise RiskError("OLDER_REFERENCE_DATE", "과거 기준일로 최신 결과를 덮어쓸 수 없습니다.")
-            prior = db.execute("SELECT analysis_version,result_hash FROM analysis_publication WHERE ticker=? ORDER BY analysis_version DESC LIMIT 1", (grade.ticker,)).fetchone()
+            prior = db.execute("SELECT analysis_version,result_hash FROM analysis_publication WHERE ticker=? AND price_to=? ORDER BY analysis_version DESC LIMIT 1",
+                                (grade.ticker, grade.price_to.isoformat())).fetchone()
             if old is not None and prior is not None and prior["result_hash"] == digest:
                 self._complete_item(db, item_id, old, "UNCHANGED", grade.as_of)
                 return old, False
@@ -242,7 +243,7 @@ class Repository:
 
     def automatic_candidates(self, target, tickers, maximum_attempts):
         retryable = {"KIS_UNAVAILABLE", "LATEST_PRICE_MISSING"}
-        fatal = {"KIS_CONFIGURATION", "KIS_AUTH_FAILED", "KIS_RESPONSE_ERROR", "KIS_QUERY_FAILED", "CODE_ERROR"}
+        fatal = FATAL_BATCH_CODES
         completed = self.completed(target)
         with self.snapshot() as db:
             rows = db.execute("""SELECT i.* FROM batch_item i JOIN batch_run r USING(run_id)

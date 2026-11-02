@@ -27,7 +27,8 @@ class KisClient:
 
     def _request(self, method, path, **kwargs):
         for attempt in range(3):
-            self.sleep(1.3 * (attempt + 1))
+            if attempt:
+                self.sleep(1.3 * attempt)
             try:
                 response = self.http.request(method, path, **kwargs)
                 if response.status_code == 429 or response.status_code >= 500:
@@ -37,6 +38,7 @@ class KisClient:
                 if not isinstance(body, dict):
                     raise ValueError
                 if body.get("msg_cd") == "EGW00201":
+                    self.token = None
                     continue
                 return body
             except httpx.TransportError:

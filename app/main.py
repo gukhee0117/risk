@@ -1,6 +1,7 @@
 """Application factory; importing the module never calls KIS or opens a DB."""
 
 import hmac
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header
@@ -15,6 +16,8 @@ from app.services.calendar import TradingCalendar
 from app.services.risk import RiskService
 from app.services.runtime import BatchRuntime, start_scheduler
 from app.universe import load_universe
+
+logger = logging.getLogger(__name__)
 
 
 def create_app(settings: Settings | None = None, clock=now_kst, *, runtime=None, scheduler_factory=start_scheduler):
@@ -84,7 +87,8 @@ def create_app(settings: Settings | None = None, clock=now_kst, *, runtime=None,
             if (usable and settings.service_key and not runtime.last_error
                     and status['lastBatchStatus'] not in {'FAILED', 'PARTIAL', 'INTERRUPTED'}):
                 status['status'] = 'OK'
-        except RiskError:
+        except RiskError as exc:
+            logger.warning("Health details unavailable: %s", exc.code)
             pass
         # Liveness remains 200 even when calculations fail; do not cause restart loops.
         return status
