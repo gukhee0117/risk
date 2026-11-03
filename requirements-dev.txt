@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# Runtime includes HTTPX for KIS and FastAPI's TestClient.
+pytest>=8,<10

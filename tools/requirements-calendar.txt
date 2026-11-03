@@ -1,0 +1,2 @@
+# Optional XLS inspection dependency; not needed by the service or unit tests.
+xlrd==2.0.2

@@ -1,0 +1,2 @@
+# Calendar versions hash raw bytes. Keep identical bytes on Windows and Linux.
+/config/krx/*.csv text eol=lf
