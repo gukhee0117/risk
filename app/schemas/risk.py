@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
@@ -44,3 +44,10 @@ class GradeResponse(BaseModel):
 class PackageResponse(BaseModel):
     volatility: float
     asOf: datetime
+
+
+class StockClassificationResponse(BaseModel):
+    ticker: Ticker
+    riskGrade: int = Field(ge=1, le=2)
+    asOf: datetime
+    basis: Literal['STOCK_RULE_CURRENT_STATUS'] = 'STOCK_RULE_CURRENT_STATUS'

@@ -4,14 +4,15 @@ import hmac
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Header
+from fastapi import Depends, FastAPI, Header, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.config import Settings
+from app.clients.kis import KisClient
 from app.domain import RiskError, now_kst
 from app.repositories.sqlite import Repository
-from app.schemas.risk import GradeResponse, PackageRequest, PackageResponse
+from app.schemas.risk import GradeResponse, PackageRequest, PackageResponse, StockClassificationResponse, Ticker
 from app.services.calendar import TradingCalendar
 from app.services.risk import RiskService
 from app.services.runtime import BatchRuntime, start_scheduler
@@ -20,7 +21,8 @@ from app.universe import load_universe
 logger = logging.getLogger(__name__)
 
 
-def create_app(settings: Settings | None = None, clock=now_kst, *, runtime=None, scheduler_factory=start_scheduler):
+def create_app(settings: Settings | None = None, clock=now_kst, *, runtime=None, scheduler_factory=start_scheduler,
+               classification_client_factory=KisClient):
     settings = settings or Settings.from_env()
     runtime = runtime or BatchRuntime(settings, clock=clock)
 
@@ -96,6 +98,25 @@ def create_app(settings: Settings | None = None, clock=now_kst, *, runtime=None,
     @api.get("/grades", response_model=list[GradeResponse], dependencies=[Depends(authorize)])
     def grades(risk: RiskService = Depends(service)):
         return risk.grades()
+
+    @api.get('/stocks/{ticker}/classification', response_model=StockClassificationResponse,
+             dependencies=[Depends(authorize)],
+             description='Current stock rule classification using a live KIS status check. '
+                         'Independent of price-history freshness; contains no VaR or volatility. '
+                         'Provider failure returns an error, never a cached normal classification.')
+    def stock_classification(ticker: Ticker, response: Response):
+        response.headers['Cache-Control'] = 'no-store'
+        instrument = load_universe(settings.universe).get(ticker)
+        if instrument is None or instrument.status != 'active' or instrument.kind != 'STOCK':
+            raise RiskError('STOCK_CLASSIFICATION_UNAVAILABLE', 'Active domestic stock is required.', 422, [ticker])
+        client = classification_client_factory(settings.kis_key, settings.kis_secret, settings.kis_environment)
+        try:
+            elevated = client.stock_elevated(ticker)
+            if type(elevated) is not bool:
+                raise RiskError('GRADING_METADATA_REQUIRED', 'Current stock status is required.', 503, [ticker])
+            return StockClassificationResponse(ticker=ticker, riskGrade=1 if elevated else 2, asOf=clock())
+        finally:
+            client.close()
 
     @api.post("/package/volatility", response_model=PackageResponse, dependencies=[Depends(authorize)])
     def volatility(request: PackageRequest, risk: RiskService = Depends(service)):
