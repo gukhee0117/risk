@@ -38,7 +38,7 @@ class RiskService:
             grades = self._usable(self.repository.grades(db), current)
             unavailable = [ticker for ticker in tickers if ticker not in grades]
             if unavailable:
-                raise RiskError("GRADE_UNAVAILABLE", "유효한 등급이 없는 종목이 있습니다.", tickers=unavailable)
+                raise RiskError("GRADE_UNAVAILABLE", "유효한 가격 기반 위험지표가 없는 종목이 있습니다.", tickers=unavailable)
             end = min(grades[ticker].price_to for ticker in tickers)
             sessions = self.calendar.window(end)
             series = {ticker: returns_for(self.repository.prices(db, ticker), sessions) for ticker in tickers}

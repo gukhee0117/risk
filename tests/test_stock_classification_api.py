@@ -70,3 +70,13 @@ def test_unknown_classification_never_becomes_standard_stock(market,tmp_path):
         response=client.get('/stocks/005930/classification',headers={'X-Risk-Service-Key':'synthetic-test-service-key'})
     assert response.status_code==503
     assert calls[-1]=='closed'
+
+
+def test_connection_is_reused_but_status_is_checked_on_each_request(market,tmp_path):
+    api,calls,_=classification_app(market,tmp_path)
+    with TestClient(api) as client:
+        for _ in range(2):
+            response=client.get('/stocks/005930/classification',headers={'X-Risk-Service-Key':'synthetic-test-service-key'})
+            assert response.status_code==200
+        assert calls==['created','005930','005930']
+    assert calls[-1]=='closed'
