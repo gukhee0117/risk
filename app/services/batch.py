@@ -76,7 +76,8 @@ def run_batch(repository, calendar, universe, client, now, *, target_date=None, 
                     policy = GradingPolicy('STOCK', stock_elevated=client.stock_elevated(ticker))
                 elif instrument.kind in {'ETF', 'FUND'}:
                     policy = GradingPolicy(instrument.kind, inception=instrument.inception,
-                        asset_grade=instrument.asset_grade, leveraged_or_inverse=instrument.leveraged_or_inverse)
+                        asset_grade=instrument.asset_grade, leveraged_or_inverse=instrument.leveraged_or_inverse,
+                        high_difficulty=instrument.high_difficulty)
                     if instrument.kind == 'ETF':
                         metadata = client.etf_metadata(ticker)
                         if metadata['listed_on'] > end:

@@ -118,7 +118,7 @@ def preflight(settings, now, *, probe_storage=False):
                     continue
                 product_grade(0, GradingPolicy(instrument.kind, inception=instrument.inception,
                     asset_grade=instrument.asset_grade, leveraged_or_inverse=instrument.leveraged_or_inverse,
-                    history_since=history_since), reference or now.astimezone(KST).date())
+                    history_since=history_since, high_difficulty=instrument.high_difficulty), reference or now.astimezone(KST).date())
             except RiskError:
                 invalid.append(ticker)
         add('grading_metadata', 'FAIL' if invalid else 'WARN' if needs_history else 'PASS',

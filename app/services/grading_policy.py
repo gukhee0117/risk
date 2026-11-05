@@ -3,6 +3,7 @@
 Inputs must come from reviewed product metadata, never ticker/name guesses.
 FSC 2023-01-25 guidance, III-2 and III-4:
 https://www.fsc.go.kr/po010101/79327
+Cross-checked against the supplied KOFIA reference 3, II-4 and III-2/4.
 This is an explicit project policy based on that published guidance.
 """
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ class GradingPolicy:
     asset_grade: int | None = None  # Reviewed investment-asset/structure classification.
     leveraged_or_inverse: bool | None = None
     history_since: date | None = None  # Observed trading proves existence, not the exact inception date.
+    high_difficulty: bool = False
 
 
 def product_grade(value: float, policy: GradingPolicy, as_of: date) -> int:
@@ -27,6 +29,9 @@ def product_grade(value: float, policy: GradingPolicy, as_of: date) -> int:
 
     def missing():
         raise RiskError('GRADING_METADATA_REQUIRED', 'Verified product grading metadata is required.')
+
+    if type(policy.high_difficulty) is not bool:
+        missing()
 
     if policy.kind == 'STOCK':
         if type(policy.stock_elevated) is not bool:
@@ -43,9 +48,14 @@ def product_grade(value: float, policy: GradingPolicy, as_of: date) -> int:
     if policy.kind == 'ETF' and type(policy.leveraged_or_inverse) is not bool:
         missing()
     if policy.inception is not None and policy.inception > cutoff:
-        if type(policy.asset_grade) is not int or not 1 <= policy.asset_grade <= 6:
-            missing()
-        # The reviewed asset grade already includes any special payoff structure.
-        return policy.asset_grade
-    grade = grade_for(value)
-    return max(1, grade - 1) if policy.kind == 'ETF' and policy.leveraged_or_inverse else grade
+        if policy.leveraged_or_inverse is True:
+            grade = 1  # Known special payoff structure takes precedence over an asset-grade input.
+        else:
+            if type(policy.asset_grade) is not int or not 1 <= policy.asset_grade <= 6:
+                missing()
+            grade = policy.asset_grade
+    else:
+        grade = grade_for(value)
+        if policy.kind == 'ETF' and policy.leveraged_or_inverse:
+            grade = max(1, grade - 1)
+    return min(grade, 2) if policy.high_difficulty else grade

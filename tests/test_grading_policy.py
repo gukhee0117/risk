@@ -46,3 +46,22 @@ def test_new_leveraged_etf_uses_reviewed_structure_grade_without_double_uplift()
     policy = GradingPolicy('ETF', inception=date(2026, 1, 1),
                            leveraged_or_inverse=True, asset_grade=1)
     assert product_grade(.01, policy, date(2026, 11, 5)) == 1
+
+
+@pytest.mark.parametrize('asset_grade', [None, 2, 6])
+@pytest.mark.parametrize('kind', ['ETF', 'FUND'])
+def test_new_leveraged_fund_cannot_be_lowered_by_asset_input(asset_grade, kind):
+    policy = GradingPolicy(kind, inception=date(2026, 1, 1),
+                           leveraged_or_inverse=True, asset_grade=asset_grade)
+    assert product_grade(.01, policy, date(2026, 11, 5)) == 1
+
+
+@pytest.mark.parametrize('value,expected', [(.005, 2), (.3, 2), (.7, 1)])
+def test_high_difficulty_fund_cannot_be_lower_risk_than_grade_two(value, expected):
+    policy = GradingPolicy('FUND', inception=date(2020, 1, 1), high_difficulty=True)
+    assert product_grade(value, policy, date(2026, 11, 5)) == expected
+
+
+def test_new_high_difficulty_fund_applies_floor_after_asset_classification():
+    policy = GradingPolicy('FUND', inception=date(2026, 1, 1), asset_grade=5, high_difficulty=True)
+    assert product_grade(.005, policy, date(2026, 11, 5)) == 2

@@ -16,6 +16,7 @@ class Instrument:
     inception: date | None = None
     asset_grade: int | None = None
     leveraged_or_inverse: bool | None = None
+    high_difficulty: bool = False
 
 
 def load_universe(path: Path) -> dict[str, Instrument]:
@@ -25,6 +26,9 @@ def load_universe(path: Path) -> dict[str, Instrument]:
             for row in csv.DictReader(stream):
                 kind = row.get('kind', '')
                 leverage = row.get('leveraged_or_inverse', '')
+                difficulty = row.get('high_difficulty', '')
+                if difficulty not in {'', 'true', 'false'}:
+                    raise ValueError
                 if kind not in {'', 'STOCK', 'ETF', 'FUND'} or leverage not in {'', 'true', 'false'}:
                     raise ValueError
                 inception = row.get('inception_date', '')
@@ -34,7 +38,7 @@ def load_universe(path: Path) -> dict[str, Instrument]:
                 entries.append(Instrument(row['ticker'], row['name'], row['status'], kind,
                     date.fromisoformat(inception) if inception else None,
                     int(asset_grade) if asset_grade else None,
-                    leverage == 'true' if leverage else None))
+                    leverage == 'true' if leverage else None, difficulty == 'true'))
         if not entries or len({e.ticker for e in entries}) != len(entries):
             raise ValueError
         if any(not re.fullmatch(r"[0-9]{6}", e.ticker) or e.status not in ("active", "code_mismatch", "stale") for e in entries):

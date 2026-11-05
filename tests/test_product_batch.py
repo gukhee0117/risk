@@ -102,3 +102,23 @@ def test_universe_metadata_validation(tmp_path):
     assert load_universe(path)['069500'].asset_grade==2
     path.write_text(path.read_text().replace(',false',',unknown'),encoding='utf-8')
     with pytest.raises(RiskError):load_universe(path)
+
+
+def test_batch_applies_high_difficulty_limit_to_asset_based_grade(market):
+    cal,now,sessions,repo,*_=market
+    inception=sessions[-100]
+    instrument=Instrument('069500','synthetic','active',kind='FUND',inception=inception,
+                          asset_grade=5,high_difficulty=True)
+    class Client:
+        def history(self,ticker,start,end): return make_prices([d for d in sessions if d>=start])
+    result=run_batch(repo,cal,{'069500':instrument},Client(),now,target_date=sessions[-1])
+    assert result['updated']==['069500']
+    with repo.snapshot() as db: assert repo.grades(db)['069500'].risk_grade==2
+
+
+def test_high_difficulty_metadata_is_parsed_strictly(tmp_path):
+    path=tmp_path/'fund.csv'
+    path.write_text('ticker,name,status,kind,high_difficulty\n069500,test,active,FUND,true\n',encoding='utf-8')
+    assert load_universe(path)['069500'].high_difficulty is True
+    path.write_text(path.read_text().replace(',true',',yes'),encoding='utf-8')
+    with pytest.raises(RiskError): load_universe(path)
