@@ -48,7 +48,7 @@ def prepare(directory):
                              "synthetic-not-an-official-KRX-schedule" if opened else ""])
             day += timedelta(days=1)
     (directory / "universe.csv").write_text(
-        "ticker,name,status\n005930,Synthetic A,active\n000660,Synthetic B,active\n", encoding="utf-8")
+        "ticker,name,status,kind\n005930,Synthetic A,active,STOCK\n000660,Synthetic B,active,STOCK\n", encoding="utf-8")
     (directory / "clock.txt").write_text("2026-10-28T17:10:00+09:00", encoding="utf-8")
     calendar = TradingCalendar.from_csv(path)
     (directory / "manifest.json").write_text(json.dumps({
@@ -102,8 +102,21 @@ def main():
 
     settings = Settings(database=directory / "risk.sqlite3", calendar=directory / "calendar.csv",
                         universe=directory / "universe.csv", service_key='synthetic-http-integration-key')
+    class SyntheticStatusClient:
+        def __init__(self, *_):
+            pass
+        def stock_elevated(self, ticker):
+            from app.domain import RiskError
+            if (directory / 'status-unavailable').exists():
+                raise RiskError('KIS_UNAVAILABLE', 'Synthetic provider failure', 503)
+            path = directory / 'stock-status.json'
+            return json.loads(path.read_text(encoding='utf-8')).get(ticker, False) if path.exists() else False
+        def close(self):
+            pass
+
     api = create_app(settings, clock=lambda: datetime.fromisoformat(
-        (directory / "clock.txt").read_text(encoding="utf-8")))
+        (directory / "clock.txt").read_text(encoding="utf-8")),
+        classification_client_factory=SyntheticStatusClient)
     uvicorn.run(api, host="127.0.0.1", port=args.port, log_level="warning", access_log=False)
 
 
