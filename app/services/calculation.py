@@ -42,7 +42,7 @@ def returns_for(prices: list[Price], sessions: list) -> pd.Series:
     return pd.Series(values, index=sessions[1:], dtype=float)
 
 
-def calculate_grade(ticker, prices, sessions, as_of) -> Grade:
+def calculate_grade(ticker, prices, sessions, as_of, *, policy=None) -> Grade:
     by_day = {p.day: p for p in prices}
     latest = by_day.get(sessions[-1])
     if latest is None or not latest.volume:
@@ -54,7 +54,12 @@ def calculate_grade(ticker, prices, sessions, as_of) -> Grade:
     vol = float(np.std(values, ddof=1)) * math.sqrt(250)
     if not math.isfinite(vol):
         raise RiskError("INVALID_RESULT", "변동성이 유효하지 않습니다.")
-    return Grade(ticker, var, grade_for(var), vol, sessions[1], sessions[-1], as_of)
+    if policy is None:
+        risk_grade = grade_for(var)
+    else:
+        from app.services.grading_policy import product_grade
+        risk_grade = product_grade(var, policy, sessions[-1])
+    return Grade(ticker, var, risk_grade, vol, sessions[1], sessions[-1], as_of)
 
 
 def package_volatility(series_by_ticker: dict, weights: list[float]) -> float:
