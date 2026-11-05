@@ -101,3 +101,45 @@ class KisClient:
         else:
             raise RiskError("KIS_PAGE_LIMIT", "시세 페이지 한도를 초과했습니다.", tickers=[ticker])
         return sorted(prices.values(), key=lambda p: p.day)
+
+    def stock_elevated(self, ticker):
+        """Current KRX-listed stock warning/management status; never assume normal."""
+        headers = {**self._headers(), 'tr_id': 'FHKST01010100'}
+        data = self._request('GET', '/uapi/domestic-stock/v1/quotations/inquire-price',
+            headers=headers, params={'FID_COND_MRKT_DIV_CODE': 'J', 'FID_INPUT_ISCD': ticker})
+        try:
+            if str(data.get('rt_cd')) != '0':
+                raise ValueError
+            row = data['output']
+            if row['stck_shrn_iscd'] != ticker:
+                raise ValueError
+            warning, managed = row['mrkt_warn_cls_code'], row['mang_issu_cls_code']
+            if warning not in {'00', '01', '02', '03'} or managed not in {'Y', 'N'}:
+                raise ValueError
+            return warning != '00' or managed == 'Y'
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RiskError('GRADING_METADATA_REQUIRED', 'KIS stock classification is missing or invalid.', 503, tickers=[ticker]) from exc
+
+    def etf_metadata(self, ticker):
+        """KIS ETF/ETN quote: tracking multiplier and listing-date evidence.
+
+        A listing date is an upper bound on inception, not its replacement.
+        Official example: examples_llm/etfetn/inquire_price/inquire_price.py.
+        """
+        data = self._request('GET', '/uapi/etfetn/v1/quotations/inquire-price',
+            headers={**self._headers(), 'tr_id': 'FHPST02400000'},
+            params={'FID_COND_MRKT_DIV_CODE': 'J', 'FID_INPUT_ISCD': ticker})
+        try:
+            if str(data.get('rt_cd')) != '0':
+                raise ValueError
+            row = data['output']
+            multiple = Decimal(row['etf_trc_ert_mltp'])
+            listed_on = datetime.strptime(row['stck_lstn_date'], '%Y%m%d').date()
+            if not multiple.is_finite() or multiple == 0:
+                raise ValueError
+            # Reference 3 defines leveraged/inverse ETFs as targeting >1x or a negative multiple;
+            # keep -1x inverse in scope instead of using abs(multiple) > 1.
+            return {'listed_on': listed_on, 'leveraged_or_inverse': multiple < 0 or multiple > 1,
+                    'tracking_multiple': str(multiple)}
+        except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
+            raise RiskError('GRADING_METADATA_REQUIRED', 'KIS ETF metadata is missing or invalid.', 503, tickers=[ticker]) from exc

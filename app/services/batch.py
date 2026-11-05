@@ -5,6 +5,7 @@ from pathlib import Path
 
 from app.domain import FATAL_BATCH_CODES, RiskError, now_kst
 from app.services.calculation import calculate_grade
+from app.services.grading_policy import GradingPolicy
 
 
 @contextmanager
@@ -69,11 +70,39 @@ def run_batch(repository, calendar, universe, client, now, *, target_date=None, 
                 continue
             item_id = repository.start_item(run_id, ticker, clock())
             try:
-                prices = client.history(ticker, sessions[0], end)
-                if any(p.day not in sessions for p in prices):
+                policy = None
+                item_sessions = sessions
+                if instrument.kind == 'STOCK':
+                    policy = GradingPolicy('STOCK', stock_elevated=client.stock_elevated(ticker))
+                elif instrument.kind in {'ETF', 'FUND'}:
+                    policy = GradingPolicy(instrument.kind, inception=instrument.inception,
+                        asset_grade=instrument.asset_grade, leveraged_or_inverse=instrument.leveraged_or_inverse,
+                        high_difficulty=instrument.high_difficulty)
+                    if instrument.kind == 'ETF':
+                        metadata = client.etf_metadata(ticker)
+                        if metadata['listed_on'] > end:
+                            raise RiskError('GRADING_METADATA_REQUIRED', 'ETF was not listed on the price reference date.')
+                        if (instrument.leveraged_or_inverse is not None and
+                                instrument.leveraged_or_inverse != metadata['leveraged_or_inverse']):
+                            raise RiskError('GRADING_METADATA_REQUIRED', 'ETF structure differs from configured metadata.')
+                        policy = replace(policy, leveraged_or_inverse=metadata['leveraged_or_inverse'],
+                                         history_since=metadata['listed_on'])
+                    if instrument.inception is not None and instrument.inception > sessions[0]:
+                        item_sessions = [day for day in sessions if day >= instrument.inception]
+                else:
+                    raise RiskError('GRADING_METADATA_REQUIRED', 'Product kind is required.', tickers=[ticker])
+                if len(item_sessions) < 3:
+                    raise RiskError('INSUFFICIENT_SAMPLES', 'Not enough sessions to calculate market metrics.')
+                prices = client.history(ticker, item_sessions[0], end)
+                if any(p.day not in item_sessions for p in prices):
                     raise RiskError("INVALID_KIS_DATA", "공식 거래일 범위 밖 가격이 있습니다.", tickers=[ticker])
+                if policy is not None and instrument.kind in {'ETF', 'FUND'}:
+                    evidence = [p.day for p in prices if p.volume]
+                    if policy.history_since is not None:
+                        evidence.append(policy.history_since)
+                    policy = replace(policy, history_since=min(evidence, default=None))
                 # Never persist a partial refresh or splice different adjusted-price vintages.
-                grade = calculate_grade(ticker, prices, sessions, clock())
+                grade = calculate_grade(ticker, prices, item_sessions, clock(), policy=policy)
                 grade = replace(grade, as_of=clock())
                 _, changed = repository.replace(grade, prices, item_id=item_id)
                 result["updated" if changed else "unchanged"].append(ticker)

@@ -2,6 +2,22 @@
 
 기존 계산식·API 경로·종목별 원자성·3거래일 만료를 유지한다. 패키지에 CURRENT 전용 제한을 추가하지 않는다. Python은 고객 정보 및 MARIA DB에 접근하지 않는다.
 
+## 상품별 등급 기준 — 2026-11-05
+
+공식 참고자료는 [금융투자협회 표준투자권유준칙 참고3 원문](https://law.kofia.or.kr/download.do?gubun=102&seq=27613)이다. 현재 국내 주식·ETF 및 펀드 분류에 적용한다.
+
+- **주식:** KIS 현재 투자주의·경고·관리 상태를 조회한다. 일반 주식은 2등급, 해당 상태가 있으면 1등급이다. 현재 등급 조회는 가격 DB와 시장 지표 신선도에 의존하지 않는다.
+- **3년 이상 ETF·펀드:** 기존 VaR(일간수익률 2.5 백분위의 절댓값 × √250) 구간으로 등급을 정한다. ETF 레버리지·인버스는 한 단계 높인다.
+- **3년 미만 ETF·펀드:** 과거 수익률 VaR 대신 검토된 투자자산/구조 등급을 사용한다. 설정 3년 미만 레버리지·인버스 상품은 1등급이다.
+- **고난도 상품:** 산정 결과가 3~6등급이면 2등급으로 제한하며 1등급은 그대로 둔다.
+- 주식에도 변동성·VaR는 계속 계산해 저장하고 패키지 변동성 API는 기존 방식으로 제공한다. 등급 규칙과 지표 계산은 분리돼 있다.
+
+`config/universe.csv`의 `kind`, `inception_date`, `asset_grade`, `leveraged_or_inverse`, `high_difficulty`가 상품 메타데이터다. 누락·오류 메타데이터는 ETF/펀드 등급 산정을 중단하며 주식 상태 조회 실패도 일반 주식으로 간주하지 않는다. 종목별 배치는 메타데이터 검증과 기존 가격 표본 요건을 통과해야 게시한다.
+
+`GET /stocks/{ticker}/classification`은 인증된 현재 주식 등급(1/2)만 반환한다. KIS 상태를 매 요청마다 확인하고 응답은 `Cache-Control: no-store`다. 기존 `GET /grades`와 `POST /package/volatility`는 가격 기반 지표 및 신선도 계약을 유지한다. 상세 연동은 [MARIA_SYNC_CONTRACT.md](MARIA_SYNC_CONTRACT.md)를 참조한다.
+
+공식 문서 대조 후 레버리지·인버스 및 고난도 상품의 제한도 반영했다. 2026-11-05 전체 검증 결과는 Python 239개, MARIA 위험등급 연관 검증 201개(서로 다른 SQL/HTTP 설정에서 실행)다. 격리 전체 상품 배치에서는 74개 중 71개 게시, 3개는 표본 부족으로 미게시했다. 운영 배치·MARIA 자동 Pull은 비활성 상태다.
+
 ## 가격·등급·분석 버전
 
 - price_daily와 risk_grade에 analysis_version을 저장한다. 분석 버전은 종목별이며 SQLite BEGIN IMMEDIATE 트랜잭션 안에서 기존 등급과 analysis_publication 이력의 최대 버전보다 1 큰 값으로 할당한다.

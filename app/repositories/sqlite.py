@@ -118,7 +118,7 @@ class Repository:
             return text.rstrip("0").rstrip(".") if "." in text else text
         # Raw inputs count: corrected prices can affect a package even if the
         # displayed single-stock grade/volatility are numerically unchanged.
-        payload = ["historical-var-v1", grade.ticker, grade.price_from.isoformat(), grade.price_to.isoformat(),
+        payload = ["product-grading-v2", grade.ticker, grade.price_from.isoformat(), grade.price_to.isoformat(),
                    grade.var975, grade.risk_grade, grade.volatility,
                    [(p.day.isoformat(), decimal_text(p.close), p.volume) for p in sorted(prices, key=lambda p: p.day)]]
         return hashlib.sha256(json.dumps(payload, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
@@ -179,7 +179,7 @@ class Repository:
 
     def completed(self, target):
         with self.snapshot() as db:
-            return {r[0] for r in db.execute("""SELECT i.ticker FROM batch_item i
+            candidates = {r[0] for r in db.execute("""SELECT i.ticker FROM batch_item i
                 JOIN batch_run r ON r.run_id=i.run_id JOIN risk_grade g ON g.ticker=i.ticker
                 WHERE r.target_date=? AND g.price_to=r.target_date
                 AND i.item_id=(SELECT MAX(last.item_id) FROM batch_item last
@@ -187,6 +187,19 @@ class Repository:
                     WHERE last.ticker=i.ticker AND lr.target_date=r.target_date)
                 AND i.status IN ('SUCCEEDED','UNCHANGED') AND i.analysis_version=g.analysis_version""",
                 (target.isoformat(),))}
+            grades = self.grades(db)
+            # Old algorithm publications cannot satisfy the new batch checkpoint.
+            completed = set()
+            for ticker in candidates:
+                grade = grades[ticker]
+                publication = db.execute(
+                    'SELECT result_hash FROM analysis_publication WHERE ticker=? AND analysis_version=?',
+                    (ticker, grade.analysis_version)).fetchone()
+                if publication is None:
+                    continue
+                if publication[0] == self.result_hash(grade, self.prices(db, ticker)):
+                    completed.add(ticker)
+            return completed
 
     def start_run(self, target, calendar_version, mode, tickers, now):
         run_id = uuid4().hex
