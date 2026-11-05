@@ -1,7 +1,9 @@
 # Python Risk 서비스
 
-Python 3.12·FastAPI·numpy·pandas·SQLite로 종목 위험등급과 패키지 변동성을 계산한다.
+Python 3.12·FastAPI·numpy·pandas·SQLite로 상품별 위험등급과 패키지 변동성을 계산한다.
 시세 출처는 KIS다. MARIA DB·고객 정보에는 접근하지 않으며 추천·AI 설명·성향 판단은 처리하지 않는다.
+
+주식은 KIS 현재 투자주의·경고·관리 상태로 1/2등급을 판단하고, ETF·펀드는 설정 기간에 따라 투자자산 기준 또는 VaR 기준을 적용한다. VaR·변동성 지표는 주식에도 계속 계산한다. 협회 기준과 세부 조건은 [구현 계약](IMPLEMENTATION.md)에 정리했다.
 
 시세 수집은 KIS를 사용한다. 2026-10-30 종가를 KIS와 공공데이터에서 주식 2종목·ETF 2종목으로 대조해 네 종목 모두 값이 일치하는 것을 확인했다. 이는 확인한 표본의 교차 검증이며 모든 종목·날짜에 대한 보장은 아니다. KIS 일봉 값의 장후 변경 관측과 운영상 정규장 종가 확정 시각은 [KIS 가격 기준 검증](KIS_PRICE_VERIFICATION.md)에 기록한다. 자동 배치/Pull은 비활성으로 유지하고, 실제 서버 검증은 [인프라 확인 목록](INFRA_CHECKLIST.md)을 따른다.
 
@@ -13,17 +15,19 @@ Python 3.12·FastAPI·numpy·pandas·SQLite로 종목 위험등급과 패키지 
 ```
 
 [.env.example](.env.example)에 있는 이름으로 실제 키·설정을 주입한다. 로컬 .env·실제 키·SQLite는 Git에 저장하지 않는다.
-**두 업무 API에 RISK_SERVICE_KEY와 같은 X-Risk-Service-Key 헤더가 필요하다.**
+**업무 API에 RISK_SERVICE_KEY와 같은 X-Risk-Service-Key 헤더가 필요하다.**
 키 설정 누락은 503 AUTH_CONFIGURATION, 잘못된/없는 요청 키는 401이다. MARIA GET /grades 클라이언트도 같은 키 헤더를 전송한다.
 
 | 경로 | 동작 |
 | --- | --- |
 | GET /grades | CURRENT·STALE인 활성 종목의 최신 게시 결과 배열 |
+| GET /stocks/{ticker}/classification | 주식의 현재 상태 기반 등급(1/2). 가격 이력과 별도 조회 |
 | POST /package/volatility | 종목·비중의 공통 거래일 수익률 공분산으로 변동성 계산 |
 | GET /health | 내부 헬스체크. 인증 없이 200. status·lastSuccessfulCalculationAt·lastBatchStatus·batch_running |
 
 GET /grades 필드는 ticker·var975·riskGrade·volatility·priceFrom·priceTo·asOf·analysisVersion이다.
 priceTo는 분석 기준 거래일이며 최초 게시 버전은 1이다. 같은 결과 재분석은 버전·asOf를 유지한다.
+주식 분류 API는 ticker·riskGrade·asOf·basis를 반환하며 현재 KIS 상태를 조회한다. 상태 조회 실패 시 저장된 과거 등급으로 대체하지 않는다.
 패키지 요청은 `{"items":[{"ticker":"005930","weight":1}]}` 형식이며 ticker는 앞자리 0을 보존한다.
 계산·표시값 규칙은 [IMPLEMENTATION.md](IMPLEMENTATION.md), 연동 계약은 [MARIA_SYNC_CONTRACT.md](MARIA_SYNC_CONTRACT.md)를 따른다.
 
@@ -68,7 +72,7 @@ BLOCKED는 종료 코드 1, PASS/REVIEW_REQUIRED는 0이다. 경고와 manualChe
 - [운영 기준](OPERATIONS_READINESS.md): 설정 이름·NCP 전달·배포 잠금·백업·남은 검증의 현재 기준.
 - [달력](config/krx/README.md): 개장일 2023~2026년. 일반 거래일은 공식 기본 종료 15:30을 적용하며, 미확인 특별일인 2026-11-19는 공지 확인 전까지 차단한다.
 - [KIS 실측](LOCAL_BATCH_VALIDATION.md): 593회·13분 12초, 71개 게시·3개 표본 부족. 20시 이후 관측이다.
-- [테스트](tests/README.md): 합성 데이터 회귀와 선택 실행 통합 검증.
+- [테스트](tests/README.md): 합성 데이터 회귀와 선택 실행 통합 검증. 2026-11-05 기준 Python 235개 통과.
 
 현재 config/universe.csv는 기존 domestic_product 시드의 77개이며 74개가 활성 상태다. DB 변경이 자동 반영되지는 않는다.
 정확한 시드가 확정되면 그 원본에 맞춘다. 기존 생성기의 77개 경로와 새 Catalog 6개 경로를 먼저 구분한다.
