@@ -101,3 +101,21 @@ class KisClient:
         else:
             raise RiskError("KIS_PAGE_LIMIT", "시세 페이지 한도를 초과했습니다.", tickers=[ticker])
         return sorted(prices.values(), key=lambda p: p.day)
+
+    def stock_elevated(self, ticker):
+        """Current KRX-listed stock warning/management status; never assume normal."""
+        headers = {**self._headers(), 'tr_id': 'FHKST01010100'}
+        data = self._request('GET', '/uapi/domestic-stock/v1/quotations/inquire-price',
+            headers=headers, params={'FID_COND_MRKT_DIV_CODE': 'J', 'FID_INPUT_ISCD': ticker})
+        try:
+            if str(data.get('rt_cd')) != '0':
+                raise ValueError
+            row = data['output']
+            if row['stck_shrn_iscd'] != ticker:
+                raise ValueError
+            warning, managed = row['mrkt_warn_cls_code'], row['mang_issu_cls_code']
+            if warning not in {'00', '01', '02', '03'} or managed not in {'Y', 'N'}:
+                raise ValueError
+            return warning != '00' or managed == 'Y'
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RiskError('GRADING_METADATA_REQUIRED', 'KIS stock classification is missing or invalid.', tickers=[ticker]) from exc

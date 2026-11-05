@@ -44,10 +44,10 @@ def market(tmp_path):
         writer.writerow(["date", "is_open", "regular_close_at", "source_ref"])
         writer.writerows((day.isoformat(), int(available is not None), available.isoformat() if available else "", "synthetic-test-only") for day, available in days)
     universe_path = tmp_path / "universe.csv"
-    universe_path.write_text("ticker,name,status\n005930,synthetic A,active\n000660,synthetic B,active\n385720,wrong,code_mismatch\n", encoding="utf-8")
+    universe_path.write_text("ticker,name,status,kind,inception_date\n005930,synthetic A,active,FUND,2020-01-01\n000660,synthetic B,active,FUND,2020-01-01\n385720,wrong,code_mismatch,FUND,2020-01-01\n", encoding="utf-8")
     repository = Repository(tmp_path / "risk.sqlite3")
     repository.initialize()
-    universe = {ticker: Instrument(ticker, ticker, "active") for ticker in ("005930", "000660")}
+    universe = {ticker: Instrument(ticker, ticker, "active", "FUND", date(2020, 1, 1)) for ticker in ("005930", "000660")}
     settings = Settings(repository.path, path, universe_path, service_key='synthetic-test-service-key')
     return calendar, now, sessions, repository, universe, settings
 
