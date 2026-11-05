@@ -56,6 +56,7 @@ def test_new_etf_uses_asset_grade_and_available_history(market):
     inception=sessions[-100]
     instrument=Instrument('069500','test','active','ETF',inception,2,False)
     class Client:
+        def etf_metadata(self,ticker):return {'listed_on':inception,'leveraged_or_inverse':False}
         def history(self,ticker,start,end):
             assert start==inception
             return make_prices([d for d in sessions if d>=start])
@@ -75,6 +76,7 @@ def test_missing_fund_metadata_preserves_old_result(market):
     cal,now,sessions,repo,*_=market
     old,_=repo.replace(calculate_grade('069500',make_prices(sessions),sessions,now),make_prices(sessions))
     class Client:
+        def etf_metadata(self,ticker):raise RiskError('GRADING_METADATA_REQUIRED','Missing provider metadata')
         def history(self,*args): return make_prices(sessions)
     result=run_batch(repo,cal,{'069500':Instrument('069500','test','active','ETF')},Client(),now,target_date=sessions[-1])
     assert result['failed']==[{'ticker':'069500','code':'GRADING_METADATA_REQUIRED'}]

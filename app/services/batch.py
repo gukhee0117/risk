@@ -77,6 +77,15 @@ def run_batch(repository, calendar, universe, client, now, *, target_date=None, 
                 elif instrument.kind in {'ETF', 'FUND'}:
                     policy = GradingPolicy(instrument.kind, inception=instrument.inception,
                         asset_grade=instrument.asset_grade, leveraged_or_inverse=instrument.leveraged_or_inverse)
+                    if instrument.kind == 'ETF':
+                        metadata = client.etf_metadata(ticker)
+                        if metadata['listed_on'] > end:
+                            raise RiskError('GRADING_METADATA_REQUIRED', 'ETF was not listed on the price reference date.')
+                        if (instrument.leveraged_or_inverse is not None and
+                                instrument.leveraged_or_inverse != metadata['leveraged_or_inverse']):
+                            raise RiskError('GRADING_METADATA_REQUIRED', 'ETF structure differs from configured metadata.')
+                        policy = replace(policy, leveraged_or_inverse=metadata['leveraged_or_inverse'],
+                                         history_since=metadata['listed_on'])
                     if instrument.inception is not None and instrument.inception > sessions[0]:
                         item_sessions = [day for day in sessions if day >= instrument.inception]
                 else:
@@ -87,7 +96,10 @@ def run_batch(repository, calendar, universe, client, now, *, target_date=None, 
                 if any(p.day not in item_sessions for p in prices):
                     raise RiskError("INVALID_KIS_DATA", "공식 거래일 범위 밖 가격이 있습니다.", tickers=[ticker])
                 if policy is not None and instrument.kind in {'ETF', 'FUND'}:
-                    policy = replace(policy, history_since=min((p.day for p in prices if p.volume), default=None))
+                    evidence = [p.day for p in prices if p.volume]
+                    if policy.history_since is not None:
+                        evidence.append(policy.history_since)
+                    policy = replace(policy, history_since=min(evidence, default=None))
                 # Never persist a partial refresh or splice different adjusted-price vintages.
                 grade = calculate_grade(ticker, prices, item_sessions, clock(), policy=policy)
                 grade = replace(grade, as_of=clock())

@@ -12,6 +12,7 @@ from app.repositories import migrations
 from app.repositories.sqlite import Repository
 from app.services.backup import signature
 from app.services.calendar import TradingCalendar
+from app.services.grading_policy import GradingPolicy, product_grade
 from app.universe import load_universe
 
 
@@ -94,6 +95,35 @@ def preflight(settings, now, *, probe_storage=False):
             totalCount=len(universe), activeCount=active, excludedCount=len(universe) - active)
     except RiskError as exc:
         add('universe', 'FAIL', exc.code)
+
+    if universe:
+        invalid, needs_history = [], []
+        for ticker, instrument in universe.items():
+            if instrument.status != 'active':
+                continue
+            if instrument.kind == 'STOCK':
+                continue  # Live warning/management status is checked by KIS during use.
+            history_since = None
+            try:
+                if instrument.kind not in {'ETF', 'FUND'}:
+                    raise RiskError('GRADING_METADATA_REQUIRED', 'Product kind is required.')
+                if instrument.kind == 'ETF' and instrument.leveraged_or_inverse is None:
+                    raise RiskError('GRADING_METADATA_REQUIRED', 'ETF structure is required.')
+                if instrument.inception is None and settings.database.is_file():
+                    with Repository(settings.database).snapshot() as db:
+                        prices = Repository.prices(db, ticker)
+                        history_since = min((p.day for p in prices if p.volume), default=None)
+                if instrument.inception is None and history_since is None:
+                    needs_history.append(ticker)
+                    continue
+                product_grade(0, GradingPolicy(instrument.kind, inception=instrument.inception,
+                    asset_grade=instrument.asset_grade, leveraged_or_inverse=instrument.leveraged_or_inverse,
+                    history_since=history_since), reference or now.astimezone(KST).date())
+            except RiskError:
+                invalid.append(ticker)
+        add('grading_metadata', 'FAIL' if invalid else 'WARN' if needs_history else 'PASS',
+            'GRADING_METADATA_REQUIRED' if invalid else 'FUND_AGE_REQUIRES_HISTORY' if needs_history else 'AVAILABLE',
+            invalidTickers=invalid, historyRequiredTickers=needs_history)
 
     try:
         if settings.database.exists() and not settings.database.is_file():
