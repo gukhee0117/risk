@@ -26,7 +26,7 @@ def load_universe(path: Path) -> dict[str, Instrument]:
             for row in csv.DictReader(stream):
                 kind = row.get('kind', '')
                 leverage = row.get('leveraged_or_inverse', '')
-                difficulty = row.get('high_difficulty', '')
+                difficulty = row.get('high_difficulty') or ''
                 if difficulty not in {'', 'true', 'false'}:
                     raise ValueError
                 if kind not in {'', 'STOCK', 'ETF', 'FUND'} or leverage not in {'', 'true', 'false'}:

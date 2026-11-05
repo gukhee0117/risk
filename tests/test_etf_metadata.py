@@ -17,7 +17,9 @@ def metadata_client(row):
     return KisClient('synthetic','synthetic',transport=httpx.MockTransport(handler))
 
 
-@pytest.mark.parametrize('multiple,elevated',[('1.00',False),('2.00',True),('-1.00',True),('-2.00',True)])
+@pytest.mark.parametrize('multiple,elevated',[
+    ('1.00',False),('0.50',False),('2.00',True),('-1.00',True),('-2.00',True),
+])
 def test_tracking_multiplier_is_used_instead_of_product_name(multiple,elevated):
     client=metadata_client({'etf_trc_ert_mltp':multiple,'stck_lstn_date':'20021014'})
     try:

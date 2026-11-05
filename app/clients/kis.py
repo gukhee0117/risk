@@ -137,6 +137,8 @@ class KisClient:
             listed_on = datetime.strptime(row['stck_lstn_date'], '%Y%m%d').date()
             if not multiple.is_finite() or multiple == 0:
                 raise ValueError
+            # Reference 3 defines leveraged/inverse ETFs as targeting >1x or a negative multiple;
+            # keep -1x inverse in scope instead of using abs(multiple) > 1.
             return {'listed_on': listed_on, 'leveraged_or_inverse': multiple < 0 or multiple > 1,
                     'tracking_multiple': str(multiple)}
         except (KeyError, TypeError, ValueError, InvalidOperation) as exc:

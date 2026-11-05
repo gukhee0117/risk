@@ -72,7 +72,7 @@ BLOCKED는 종료 코드 1, PASS/REVIEW_REQUIRED는 0이다. 경고와 manualChe
 - [운영 기준](OPERATIONS_READINESS.md): 설정 이름·NCP 전달·배포 잠금·백업·남은 검증의 현재 기준.
 - [달력](config/krx/README.md): 개장일 2023~2026년. 일반 거래일은 공식 기본 종료 15:30을 적용하며, 미확인 특별일인 2026-11-19는 공지 확인 전까지 차단한다.
 - [KIS 실측](LOCAL_BATCH_VALIDATION.md): 593회·13분 12초, 71개 게시·3개 표본 부족. 20시 이후 관측이다.
-- [테스트](tests/README.md): 합성 데이터 회귀와 선택 실행 통합 검증. 2026-11-05 기준 Python 235개 통과.
+- [테스트](tests/README.md): 합성 데이터 회귀와 선택 실행 통합 검증. 2026-11-05 기준 Python 239개 통과.
 
 현재 config/universe.csv는 기존 domestic_product 시드의 77개이며 74개가 활성 상태다. DB 변경이 자동 반영되지는 않는다.
 정확한 시드가 확정되면 그 원본에 맞춘다. 기존 생성기의 77개 경로와 새 Catalog 6개 경로를 먼저 구분한다.

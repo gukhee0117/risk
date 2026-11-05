@@ -1,5 +1,7 @@
+import csv
 from dataclasses import replace
 from datetime import date
+from pathlib import Path
 
 import httpx
 import pytest
@@ -96,6 +98,18 @@ def test_old_algorithm_checkpoint_requires_reanalysis(market):
     assert set(result['updated'])==set(universe)
 
 
+def test_missing_publication_is_incomplete_and_batch_reprocesses_it(market):
+    cal,now,sessions,repo,universe,*_=market
+    class Client:
+        def history(self,*args):return make_prices(sessions)
+    run_batch(repo,cal,universe,Client(),now,target_date=sessions[-1])
+    with repo.connect() as db:
+        db.execute("DELETE FROM analysis_publication WHERE ticker='005930'")
+    assert repo.completed(sessions[-1])=={'000660'}
+    result=run_batch(repo,cal,universe,Client(),now,target_date=sessions[-1])
+    assert result['updated']==['005930']
+
+
 def test_universe_metadata_validation(tmp_path):
     path=tmp_path/'universe.csv'
     path.write_text('ticker,name,status,kind,inception_date,asset_grade,leveraged_or_inverse\n069500,test,active,ETF,2026-01-01,2,false\n',encoding='utf-8')
@@ -122,3 +136,13 @@ def test_high_difficulty_metadata_is_parsed_strictly(tmp_path):
     assert load_universe(path)['069500'].high_difficulty is True
     path.write_text(path.read_text().replace(',true',',yes'),encoding='utf-8')
     with pytest.raises(RiskError): load_universe(path)
+
+
+def test_default_universe_declares_high_difficulty_metadata():
+    path=Path(__file__).resolve().parents[1]/'config'/'universe.csv'
+    with path.open(encoding='utf-8-sig',newline='') as stream:
+        rows=list(csv.reader(stream))
+    assert 'high_difficulty' in rows[0]
+    assert all(len(row)==len(rows[0]) for row in rows[1:])
+    loaded=load_universe(path)
+    assert loaded and all(not instrument.high_difficulty for instrument in loaded.values())

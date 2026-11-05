@@ -42,6 +42,11 @@ def test_leveraged_etf_adjustment_and_floor():
     assert product_grade(.7, policy, date(2026, 11, 5)) == 1
 
 
+def test_mature_fund_does_not_receive_etf_specific_leverage_uplift():
+    policy = GradingPolicy('FUND', inception=date(2020, 1, 1), leveraged_or_inverse=True)
+    assert product_grade(.25, policy, date(2026, 11, 5)) == 3
+
+
 def test_new_leveraged_etf_uses_reviewed_structure_grade_without_double_uplift():
     policy = GradingPolicy('ETF', inception=date(2026, 1, 1),
                            leveraged_or_inverse=True, asset_grade=1)

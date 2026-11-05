@@ -189,10 +189,17 @@ class Repository:
                 (target.isoformat(),))}
             grades = self.grades(db)
             # Old algorithm publications cannot satisfy the new batch checkpoint.
-            return {ticker for ticker in candidates if db.execute(
-                'SELECT result_hash FROM analysis_publication WHERE ticker=? AND analysis_version=?',
-                (ticker, grades[ticker].analysis_version)).fetchone()[0] ==
-                self.result_hash(grades[ticker], self.prices(db, ticker))}
+            completed = set()
+            for ticker in candidates:
+                grade = grades[ticker]
+                publication = db.execute(
+                    'SELECT result_hash FROM analysis_publication WHERE ticker=? AND analysis_version=?',
+                    (ticker, grade.analysis_version)).fetchone()
+                if publication is None:
+                    continue
+                if publication[0] == self.result_hash(grade, self.prices(db, ticker)):
+                    completed.add(ticker)
+            return completed
 
     def start_run(self, target, calendar_version, mode, tickers, now):
         run_id = uuid4().hex

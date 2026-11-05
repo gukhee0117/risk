@@ -56,6 +56,7 @@ def product_grade(value: float, policy: GradingPolicy, as_of: date) -> int:
             grade = policy.asset_grade
     else:
         grade = grade_for(value)
+        # Reference 3's one-grade VaR uplift names leveraged/inverse ETFs; do not extend it to mature FUNDs.
         if policy.kind == 'ETF' and policy.leveraged_or_inverse:
             grade = max(1, grade - 1)
     return min(grade, 2) if policy.high_difficulty else grade

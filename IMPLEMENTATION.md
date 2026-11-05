@@ -16,7 +16,7 @@
 
 `GET /stocks/{ticker}/classification`은 인증된 현재 주식 등급(1/2)만 반환한다. KIS 상태를 매 요청마다 확인하고 응답은 `Cache-Control: no-store`다. 기존 `GET /grades`와 `POST /package/volatility`는 가격 기반 지표 및 신선도 계약을 유지한다. 상세 연동은 [MARIA_SYNC_CONTRACT.md](MARIA_SYNC_CONTRACT.md)를 참조한다.
 
-공식 문서 대조 후 레버리지·인버스 및 고난도 상품의 제한도 반영했다. 현재 전체 검증 결과는 Python 235개, MARIA 위험등급 연관 검증 201개(서로 다른 SQL/HTTP 설정에서 실행)다. 격리 전체 상품 배치에서는 74개 중 71개 게시, 3개는 표본 부족으로 미게시했다. 운영 배치·MARIA 자동 Pull은 비활성 상태다.
+공식 문서 대조 후 레버리지·인버스 및 고난도 상품의 제한도 반영했다. 2026-11-05 전체 검증 결과는 Python 239개, MARIA 위험등급 연관 검증 201개(서로 다른 SQL/HTTP 설정에서 실행)다. 격리 전체 상품 배치에서는 74개 중 71개 게시, 3개는 표본 부족으로 미게시했다. 운영 배치·MARIA 자동 Pull은 비활성 상태다.
 
 ## 가격·등급·분석 버전
 

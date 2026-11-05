@@ -10,7 +10,7 @@
 - 금융투자협회 참고3 원문 `docs/0002_[참고 3].hwp` 대조를 완료했다. 주식은 현재 투자주의·경고·관리 상태로 1/2등급, ETF·펀드는 설정 3년 기준으로 자산/구조 또는 VaR 기준, 고난도 상품은 3~6 산정 결과를 2등급으로 제한한다. 설정 3년 미만 레버리지·인버스 펀드는 1등급이다.
 - 현재 주식 등급 API `GET /stocks/{ticker}/classification`과 MARIA 연동을 구현했다. KIS 상태 실패 시 과거 저장 등급으로 대체하지 않는다. 주식 VaR·변동성과 기존 패키지 변동성 API는 유지했다.
 - 현재 risk 브랜치 `develop`은 `origin/develop`에 `e849cb3`까지 푸시돼 있다. 후속 문서 변경은 별도 커밋 및 PR 작업 중이다. `.idea/` 및 문서 외 사용자 변경을 커밋하지 않는다.
-- risk Python 전체 235개 테스트 통과. MARIA 위험등급 연관 검증은 서로 다른 SQL/unit 및 HTTP 실행 설정에서 총 201개 통과. 전체 상품 격리 배치는 74개 중 71개 게시, 3개 표본 부족 미게시, SQLite integrity `ok`; 운영 DB에는 쓰지 않았다.
+- risk Python 전체 239개 테스트 통과(리뷰 회귀 추가 후). MARIA 위험등급 연관 검증은 서로 다른 SQL/unit 및 HTTP 실행 설정에서 총 201개 통과. 전체 상품 격리 배치는 74개 중 71개 게시, 3개 표본 부족 미게시, SQLite integrity `ok`; 운영 DB에는 쓰지 않았다.
 - 삼성전자 기존 가격 731개 기준 VaR 103.2765%는 저장값과 재계산이 일치했다. 가장 큰 하락 3일의 가격쌍 6개는 공개 시세와 일치했으나 전체 조정가격 이력이 검증된 것은 아니다. 상세 `KIS_PRICE_VERIFICATION.md`.
 - 운영 스케줄러 `RISK_SCHEDULER_ENABLED=false`, MARIA 자동 Pull `RISK_SYNC_ENABLED=false`를 유지한다. NCP 배포·운영 DB 변경은 하지 않았다. 2026-11-19 KRX 특별 거래시간 확인 및 반영은 여전히 별도 남은 항목이다.
 - 사용자 요청에 따라 공유 문서를 최신화해 커밋하고, 푸시 및 upstream PR을 생성한다. 커밋 작성자는 `gukhee`로 지정한다.
