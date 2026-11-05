@@ -46,7 +46,7 @@ def test_stock_batch_persists_classification_and_metrics(market):
         def stock_elevated(self,ticker): return False
         def history(self,*args): return make_prices(sessions,[-.08]*(len(sessions)-1))
     result=run_batch(repo,cal,{'005930':Instrument('005930','test','active','STOCK')},Client(),now,target_date=sessions[-1])
-    assert result['updated']==['005930']
+    assert set(result['updated'])=={'005930'}
     with repo.snapshot() as db:
         grade=repo.grades(db)['005930']
         assert grade.risk_grade==2 and grade.var975>1
@@ -63,7 +63,7 @@ def test_new_etf_uses_asset_grade_and_available_history(market):
             assert start==inception
             return make_prices([d for d in sessions if d>=start])
     result=run_batch(repo,cal,{'069500':instrument},Client(),now,target_date=sessions[-1])
-    assert result['updated']==['069500']
+    assert set(result['updated'])=={'069500'}
     with repo.snapshot() as db:
         grade=repo.grades(db)['069500']
         assert grade.risk_grade==2 and grade.price_from>inception
@@ -107,7 +107,7 @@ def test_missing_publication_is_incomplete_and_batch_reprocesses_it(market):
         db.execute("DELETE FROM analysis_publication WHERE ticker='005930'")
     assert repo.completed(sessions[-1])=={'000660'}
     result=run_batch(repo,cal,universe,Client(),now,target_date=sessions[-1])
-    assert result['updated']==['005930']
+    assert set(result['updated'])=={'005930'}
 
 
 def test_universe_metadata_validation(tmp_path):
@@ -126,7 +126,7 @@ def test_batch_applies_high_difficulty_limit_to_asset_based_grade(market):
     class Client:
         def history(self,ticker,start,end): return make_prices([d for d in sessions if d>=start])
     result=run_batch(repo,cal,{'069500':instrument},Client(),now,target_date=sessions[-1])
-    assert result['updated']==['069500']
+    assert set(result['updated'])=={'069500'}
     with repo.snapshot() as db: assert repo.grades(db)['069500'].risk_grade==2
 
 
