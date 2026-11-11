@@ -1,7 +1,10 @@
 """Application factory; importing the module never calls KIS or opens a DB."""
 
+import asyncio
 import hmac
 import logging
+import time
+from concurrent.futures import ThreadPoolExecutor
 from threading import RLock
 from contextlib import asynccontextmanager
 
@@ -28,6 +31,34 @@ def create_app(settings: Settings | None = None, clock=now_kst, *, runtime=None,
     runtime = runtime or BatchRuntime(settings, clock=clock)
     classification_client = None
     classification_lock = RLock()
+    classification_request_lock = asyncio.Lock()
+    classification_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="risk-kis")
+
+    def query_stock_classification(ticker):
+        nonlocal classification_client
+        started = time.perf_counter()
+        try:
+            with classification_lock:
+                if classification_client is None:
+                    classification_client = classification_client_factory(
+                        settings.kis_key, settings.kis_secret, settings.kis_environment)
+                elevated = classification_client.stock_elevated(ticker)
+        except RiskError as exc:
+            elapsed_ms = round((time.perf_counter() - started) * 1000)
+            logger.warning("KIS stock classification failed ticker=%s code=%s elapsed_ms=%s",
+                           ticker, exc.code, elapsed_ms)
+            raise
+        elapsed_ms = round((time.perf_counter() - started) * 1000)
+        if elapsed_ms >= 3000:
+            logger.warning("KIS stock classification slow ticker=%s elapsed_ms=%s", ticker, elapsed_ms)
+        return elevated
+
+    def close_classification_client():
+        nonlocal classification_client
+        with classification_lock:
+            if classification_client is not None:
+                classification_client.close()
+                classification_client = None
 
     @asynccontextmanager
     async def lifespan(_):
@@ -41,12 +72,11 @@ def create_app(settings: Settings | None = None, clock=now_kst, *, runtime=None,
             runtime.stop()
             if scheduler is not None:
                 # Let the current stock finish atomically, then leave others pending.
-                import asyncio
                 await asyncio.to_thread(scheduler.shutdown, wait=True)
-            with classification_lock:
-                if classification_client is not None:
-                    classification_client.close()
-                    classification_client = None
+            async with classification_request_lock:
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(classification_executor, close_classification_client)
+            classification_executor.shutdown(wait=True, cancel_futures=True)
 
     api = FastAPI(title="Risk Service", version="0.3.0", lifespan=lifespan)
     api.state.batch_runtime = runtime
@@ -112,19 +142,21 @@ def create_app(settings: Settings | None = None, clock=now_kst, *, runtime=None,
              description='Current stock rule classification using a live KIS status check. '
                          'Independent of price-history freshness; contains no VaR or volatility. '
                          'Provider failure returns an error, never a cached normal classification.')
-    def stock_classification(ticker: Ticker, response: Response):
-        nonlocal classification_client
+    async def stock_classification(ticker: Ticker, response: Response):
         response.headers['Cache-Control'] = 'no-store'
         instrument = load_universe(settings.universe).get(ticker)
         if instrument is None or instrument.status != 'active' or instrument.kind != 'STOCK':
             raise RiskError('STOCK_CLASSIFICATION_UNAVAILABLE', 'Active domestic stock is required.', 422, [ticker])
-        with classification_lock:
-            if classification_client is None:
-                classification_client = classification_client_factory(settings.kis_key, settings.kis_secret, settings.kis_environment)
-            elevated = classification_client.stock_elevated(ticker)
-            if type(elevated) is not bool:
-                raise RiskError('GRADING_METADATA_REQUIRED', 'Current stock status is required.', 503, [ticker])
-            return StockClassificationResponse(ticker=ticker, riskGrade=1 if elevated else 2, asOf=clock())
+        # Keep blocking KIS I/O off FastAPI/AnyIO's shared sync worker pool.
+        # Serialize access to the shared client without blocking worker threads
+        # while other classification requests wait their turn.
+        async with classification_request_lock:
+            loop = asyncio.get_running_loop()
+            elevated = await loop.run_in_executor(
+                classification_executor, query_stock_classification, ticker)
+        if type(elevated) is not bool:
+            raise RiskError('GRADING_METADATA_REQUIRED', 'Current stock status is required.', 503, [ticker])
+        return StockClassificationResponse(ticker=ticker, riskGrade=1 if elevated else 2, asOf=clock())
 
     @api.post("/package/volatility", response_model=PackageResponse, dependencies=[Depends(authorize)])
     def volatility(request: PackageRequest, risk: RiskService = Depends(service)):
